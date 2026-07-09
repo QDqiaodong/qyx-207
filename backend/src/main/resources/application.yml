@@ -1,0 +1,29 @@
+server:
+  port: ${SERVER_PORT:8137}
+  address: 0.0.0.0
+
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3353}/${DB_NAME:railway_db}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:railway2026}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6426}
+      password: ${REDIS_PASSWORD:railway_redis}
+      timeout: 10000ms
+
+logging:
+  level:
+    com.railway: DEBUG
+    org.hibernate.SQL: DEBUG

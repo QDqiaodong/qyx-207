@@ -1,0 +1,15 @@
+FROM node:20
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+
+RUN npm config set registry https://registry.npmmirror.com/ && \
+    rm -rf node_modules && \
+    npm install
+
+COPY . .
+
+EXPOSE 8127
+
+CMD ["npm", "run", "dev"]
