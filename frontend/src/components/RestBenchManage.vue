@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { lineApi, stationApi, benchApi, type RestBench, type RailwayLine, type Station } from '../api'
 
@@ -12,6 +12,18 @@ const editMode = ref(false)
 
 const filterLineId = ref<number | null>(null)
 const filterStationId = ref<number | null>(null)
+const filterStatus = ref<number | null>(null)
+
+const transferDialogVisible = ref(false)
+const transferStations = ref<Station[]>([])
+const transferLoading = ref(false)
+const transferForm = ref({
+  benchId: 0,
+  benchCode: '',
+  lineId: 0,
+  stationId: 0,
+  reason: ''
+})
 
 const form = ref({
   id: 0,
@@ -22,6 +34,12 @@ const form = ref({
   lineId: 0,
   stationId: 0,
   status: 1
+})
+
+// 状态筛选在列表结果上本地过滤（线路筛选结果本身就是在用汇总）
+const filteredBenches = computed(() => {
+  if (!filterStatus.value) return benches.value
+  return benches.value.filter(b => b.status === filterStatus.value)
 })
 
 const loadLines = async () => {
@@ -134,6 +152,73 @@ const deleteBench = async (id: number) => {
   } catch {}
 }
 
+const refreshBenches = () => {
+  if (filterStationId.value) {
+    loadBenchesByStation(filterStationId.value)
+  } else if (filterLineId.value) {
+    loadBenchesByLine(filterLineId.value)
+  } else {
+    loadBenches()
+  }
+}
+
+const openTransferDialog = async (row: RestBench) => {
+  transferForm.value = {
+    benchId: row.id,
+    benchCode: row.benchCode,
+    lineId: row.railwayLine?.id || 0,
+    stationId: 0,
+    reason: ''
+  }
+  transferStations.value = []
+  if (transferForm.value.lineId) {
+    await loadTransferStations(transferForm.value.lineId)
+  }
+  transferDialogVisible.value = true
+}
+
+// 转运目标站点：只列出所选线路上仍在运营的站点
+const loadTransferStations = async (lineId: number) => {
+  try {
+    const res = await stationApi.getByLineId(lineId)
+    transferStations.value = res.data
+  } catch {
+    ElMessage.error('加载目标站点失败')
+  }
+}
+
+const onTransferLineChange = async (lineId: number) => {
+  transferForm.value.stationId = 0
+  transferStations.value = []
+  if (lineId) {
+    await loadTransferStations(lineId)
+  }
+}
+
+const submitTransfer = async () => {
+  if (!transferForm.value.lineId || !transferForm.value.stationId) {
+    ElMessage.warning('请选择目标线路和站点')
+    return
+  }
+  transferLoading.value = true
+  try {
+    await benchApi.transfer(transferForm.value.benchId, {
+      lineId: transferForm.value.lineId,
+      stationId: transferForm.value.stationId,
+      reason: transferForm.value.reason || undefined
+    })
+    ElMessage.success('转运成功，休息台已恢复在用')
+    transferDialogVisible.value = false
+    refreshBenches()
+  } catch (error: any) {
+    // 转运失败：休息台仍保持待转运，刷新列表确认状态
+    ElMessage.error(error.response?.data?.message || '转运失败')
+    refreshBenches()
+  } finally {
+    transferLoading.value = false
+  }
+}
+
 watch(filterLineId, (val) => {
   if (val) {
     loadStationsByLine(val)
@@ -168,25 +253,29 @@ onMounted(() => {
     </div>
     
     <div class="filter-bar">
-      <el-select v-model="filterLineId" placeholder="按线路筛选" clearable style="width: 180px; margin-right: 12px">
-        <el-option 
-          v-for="line in lines" 
-          :key="line.id" 
-          :label="line.lineName" 
-          :value="line.id" 
+      <el-select v-model="filterLineId" placeholder="按线路筛选（在用汇总）" clearable style="width: 200px; margin-right: 12px">
+        <el-option
+          v-for="line in lines"
+          :key="line.id"
+          :label="line.lineName"
+          :value="line.id"
         />
       </el-select>
-      <el-select v-model="filterStationId" placeholder="按站点筛选" clearable style="width: 180px">
-        <el-option 
-          v-for="station in stations" 
-          :key="station.id" 
-          :label="station.stationName" 
-          :value="station.id" 
+      <el-select v-model="filterStationId" placeholder="按站点筛选" clearable style="width: 180px; margin-right: 12px">
+        <el-option
+          v-for="station in stations"
+          :key="station.id"
+          :label="station.stationName"
+          :value="station.id"
         />
+      </el-select>
+      <el-select v-model="filterStatus" placeholder="按状态筛选" clearable style="width: 140px">
+        <el-option label="在用" :value="1" />
+        <el-option label="待转运" :value="2" />
       </el-select>
     </div>
-    
-    <el-table :data="benches" :loading="loading" border stripe>
+
+    <el-table :data="filteredBenches" :loading="loading" border stripe>
       <el-table-column prop="benchCode" label="休息台编号" width="130" />
       <el-table-column label="所属线路" width="130">
         <template #default="{ row }">
@@ -201,15 +290,16 @@ onMounted(() => {
       <el-table-column prop="material" label="材质" width="120" />
       <el-table-column prop="specification" label="摆放规格" width="150" />
       <el-table-column prop="positionDesc" label="位置描述" />
-      <el-table-column prop="status" label="状态" width="80">
+      <el-table-column prop="status" label="状态" width="90">
         <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'danger'">
-            {{ row.status === 1 ? '正常' : '停用' }}
+          <el-tag :type="row.status === 1 ? 'success' : row.status === 2 ? 'warning' : 'danger'">
+            {{ row.status === 1 ? '在用' : row.status === 2 ? '待转运' : '停用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
+          <el-button v-if="row.status === 2" size="small" type="warning" @click="openTransferDialog(row)">转运</el-button>
           <el-button size="small" @click="openDialog(true, row)">编辑</el-button>
           <el-button size="small" type="danger" @click="deleteBench(row.id)">删除</el-button>
         </template>
@@ -250,13 +340,51 @@ onMounted(() => {
         <el-form-item label="位置描述">
           <el-input v-model="form.positionDesc" type="textarea" :rows="3" />
         </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" />
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveBench">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog title="休息台转运" v-model="transferDialogVisible" width="500px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        title="仅待转运状态的休息台可转运，目标站点必须在运营且属于所选线路；转运成功后将写入变更台账并恢复在用。"
+        style="margin-bottom: 16px"
+      />
+      <el-form :model="transferForm" label-width="100px">
+        <el-form-item label="休息台编号">
+          <el-input v-model="transferForm.benchCode" disabled />
+        </el-form-item>
+        <el-form-item label="目标线路" required>
+          <el-select v-model="transferForm.lineId" placeholder="选择线路" @change="onTransferLineChange">
+            <el-option
+              v-for="line in lines"
+              :key="line.id"
+              :label="line.lineName"
+              :value="line.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="目标站点" required>
+          <el-select v-model="transferForm.stationId" placeholder="选择在运营站点">
+            <el-option
+              v-for="station in transferStations"
+              :key="station.id"
+              :label="station.stationName"
+              :value="station.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="转运原因">
+          <el-input v-model="transferForm.reason" type="textarea" :rows="2" placeholder="默认：站点停运改造，休息台转运" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="transferDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="transferLoading" @click="submitTransfer">确认转运</el-button>
       </template>
     </el-dialog>
   </div>

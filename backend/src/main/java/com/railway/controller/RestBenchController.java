@@ -1,5 +1,6 @@
 package com.railway.controller;
 
+import com.railway.dto.BenchTransferDTO;
 import com.railway.dto.RestBenchDTO;
 import com.railway.entity.ChangeRecord;
 import com.railway.entity.RestBench;
@@ -59,6 +60,18 @@ public class RestBenchController {
     public ResponseEntity<?> updateBench(@PathVariable Long id, @Valid @RequestBody RestBenchDTO dto) {
         try {
             RestBench bench = restBenchService.updateBench(id, dto);
+            return ResponseEntity.ok(bench);
+        } catch (RuntimeException e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    @PutMapping("/{id}/transfer")
+    public ResponseEntity<?> transferBench(@PathVariable Long id, @Valid @RequestBody BenchTransferDTO dto) {
+        try {
+            RestBench bench = restBenchService.transferBench(id, dto);
             return ResponseEntity.ok(bench);
         } catch (RuntimeException e) {
             Map<String, String> error = new HashMap<>();

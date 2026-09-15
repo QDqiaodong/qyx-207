@@ -64,12 +64,21 @@ export const lineApi = {
 }
 
 export const stationApi = {
-  getAll: () => instance.get<Station[]>('/stations'),
-  getByLineId: (lineId: number) => instance.get<Station[]>(`/stations/line/${lineId}`),
+  getAll: (includeAll: boolean = false) =>
+    instance.get<Station[]>('/stations', { params: includeAll ? { includeAll: true } : {} }),
+  getByLineId: (lineId: number, includeAll: boolean = false) =>
+    instance.get<Station[]>(`/stations/line/${lineId}`, { params: includeAll ? { includeAll: true } : {} }),
   getById: (id: number) => instance.get<Station>(`/stations/${id}`),
   create: (data: Partial<Station>) => instance.post<Station>('/stations', data),
   update: (id: number, data: Partial<Station>) => instance.put<Station>(`/stations/${id}`, data),
+  suspend: (id: number) => instance.put<Station>(`/stations/${id}/suspend`),
   delete: (id: number) => instance.delete(`/stations/${id}`)
+}
+
+export interface BenchTransferPayload {
+  lineId: number
+  stationId: number
+  reason?: string
 }
 
 export const benchApi = {
@@ -79,6 +88,8 @@ export const benchApi = {
   getById: (id: number) => instance.get<RestBench>(`/benches/${id}`),
   create: (data: Partial<RestBench>) => instance.post<RestBench>('/benches', data),
   update: (id: number, data: Partial<RestBench>) => instance.put<RestBench>(`/benches/${id}`, data),
+  transfer: (id: number, data: BenchTransferPayload) =>
+    instance.put<RestBench>(`/benches/${id}/transfer`, data),
   delete: (id: number) => instance.delete(`/benches/${id}`),
   getRecords: (benchId?: number) => {
     const params = benchId ? { benchId } : {}

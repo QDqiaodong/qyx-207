@@ -21,13 +21,20 @@ public class StationController {
     private final StationService stationService;
 
     @GetMapping
-    public ResponseEntity<List<Station>> getAllStations() {
-        return ResponseEntity.ok(stationService.getAllStations());
+    public ResponseEntity<List<Station>> getAllStations(
+            @RequestParam(defaultValue = "false") boolean includeAll) {
+        return ResponseEntity.ok(includeAll
+                ? stationService.getAllStationsIncludingSuspended()
+                : stationService.getAllStations());
     }
 
     @GetMapping("/line/{lineId}")
-    public ResponseEntity<List<Station>> getStationsByLineId(@PathVariable Long lineId) {
-        return ResponseEntity.ok(stationService.getStationsByLineId(lineId));
+    public ResponseEntity<List<Station>> getStationsByLineId(
+            @PathVariable Long lineId,
+            @RequestParam(defaultValue = "false") boolean includeAll) {
+        return ResponseEntity.ok(includeAll
+                ? stationService.getStationsByLineIdIncludingSuspended(lineId)
+                : stationService.getStationsByLineId(lineId));
     }
 
     @GetMapping("/{id}")
@@ -53,6 +60,18 @@ public class StationController {
     public ResponseEntity<?> updateStation(@PathVariable Long id, @Valid @RequestBody StationDTO dto) {
         try {
             Station station = stationService.updateStation(id, dto);
+            return ResponseEntity.ok(station);
+        } catch (RuntimeException e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    @PutMapping("/{id}/suspend")
+    public ResponseEntity<?> suspendStation(@PathVariable Long id) {
+        try {
+            Station station = stationService.suspendStation(id);
             return ResponseEntity.ok(station);
         } catch (RuntimeException e) {
             Map<String, String> error = new HashMap<>();

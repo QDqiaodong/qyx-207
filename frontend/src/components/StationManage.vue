@@ -31,7 +31,8 @@ const loadLines = async () => {
 const loadStations = async () => {
   loading.value = true
   try {
-    const res = await stationApi.getAll()
+    // 站点管理需要看到停运改造中的站点
+    const res = await stationApi.getAll(true)
     stations.value = res.data
   } catch (error) {
     ElMessage.error('加载站点失败')
@@ -43,7 +44,7 @@ const loadStations = async () => {
 const loadStationsByLine = async (lineId: number) => {
   loading.value = true
   try {
-    const res = await stationApi.getByLineId(lineId)
+    const res = await stationApi.getByLineId(lineId, true)
     stations.value = res.data
   } catch (error) {
     ElMessage.error('加载站点失败')
@@ -79,9 +80,34 @@ const saveStation = async () => {
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
-    loadStations()
+    refreshStations()
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '操作失败')
+  }
+}
+
+const suspendStation = async (row: Station) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定将站点「${row.stationName}」标记为停运改造吗？该站点仍在用的休息台将立即进入待转运，并从线路在用汇总中移除。`,
+      '停运改造确认',
+      { type: 'warning', confirmButtonText: '确认停运', cancelButtonText: '取消' }
+    )
+    await stationApi.suspend(row.id)
+    ElMessage.success('站点已停运改造，在用休息台已转入待转运')
+    refreshStations()
+  } catch (error: any) {
+    if (error !== 'cancel' && error?.action !== 'cancel') {
+      ElMessage.error(error.response?.data?.message || '停运操作失败')
+    }
+  }
+}
+
+const refreshStations = () => {
+  if (selectedLineId.value) {
+    loadStationsByLine(selectedLineId.value)
+  } else {
+    loadStations()
   }
 }
 
@@ -90,7 +116,7 @@ const deleteStation = async (id: number) => {
     await ElMessageBox.confirm('确定要删除该站点吗？', '提示', { type: 'warning' })
     await stationApi.delete(id)
     ElMessage.success('删除成功')
-    loadStations()
+    refreshStations()
   } catch {}
 }
 
@@ -135,16 +161,17 @@ onMounted(() => {
         </template>
       </el-table-column>
       <el-table-column prop="lineOrder" label="线路顺序" width="100" />
-      <el-table-column prop="status" label="状态" width="80">
+      <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'danger'">
-            {{ row.status === 1 ? '正常' : '停用' }}
+          <el-tag :type="row.status === 1 ? 'success' : row.status === 2 ? 'warning' : 'danger'">
+            {{ row.status === 1 ? '正常' : row.status === 2 ? '停运改造' : '停用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="230" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="openDialog(true, row)">编辑</el-button>
+          <el-button v-if="row.status === 1" size="small" type="warning" @click="suspendStation(row)">停运改造</el-button>
           <el-button size="small" type="danger" @click="deleteStation(row.id)">删除</el-button>
         </template>
       </el-table-column>
@@ -172,7 +199,13 @@ onMounted(() => {
           <el-input-number v-model="form.lineOrder" :min="0" />
         </el-form-item>
         <el-form-item label="状态">
-          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" />
+          <el-select v-model="form.status">
+            <el-option label="正常" :value="1" />
+            <el-option label="停运改造" :value="2" />
+          </el-select>
+          <div v-if="form.status === 2" class="status-hint">
+            保存后该站点仍在用的休息台将立即进入待转运
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -203,5 +236,12 @@ onMounted(() => {
 
 .filter-bar {
   margin-bottom: 16px;
+}
+
+.status-hint {
+  font-size: 12px;
+  color: #e6a23c;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 </style>
