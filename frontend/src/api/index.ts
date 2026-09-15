@@ -55,6 +55,37 @@ export interface ChangeRecord {
   createdAt: string
 }
 
+// 清扫占台单：1=清扫中（生效占台），2=已结束
+export interface CleaningOccupancy {
+  id: number
+  bench: RestBench
+  benchCode: string
+  stationId: number
+  stationName: string
+  lineId: number
+  lineName: string
+  status: number
+  reason: string
+  operator: string
+  startedAt: string
+  finishedAt: string | null
+}
+
+// 当前在座记录
+export interface BenchSitting {
+  id: number
+  bench: RestBench
+  benchCode: string
+  passengerName: string | null
+  passengerKey: string
+  satAt: string
+}
+
+export interface CleaningStartPayload {
+  benchIds: number[]
+  reason?: string
+}
+
 export const lineApi = {
   getAll: () => instance.get<RailwayLine[]>('/lines'),
   getById: (id: number) => instance.get<RailwayLine>(`/lines/${id}`),
@@ -100,4 +131,26 @@ export const benchApi = {
 export const cacheApi = {
   getBenchMaterials: () => instance.get('/cache/bench-materials'),
   getBenchCount: () => instance.get('/cache/bench-count')
+}
+
+// 清扫占台：只按点名的具体休息台开清扫，没有整线/整站入口
+export const cleaningApi = {
+  start: (data: CleaningStartPayload) =>
+    instance.post<CleaningOccupancy[]>('/benches/cleaning/start', data),
+  finish: (occupancyId: number) =>
+    instance.put<CleaningOccupancy>(`/benches/cleaning/${occupancyId}/finish`),
+  getActive: () =>
+    instance.get<CleaningOccupancy[]>('/benches/cleaning/active'),
+  getByBench: (benchId: number) =>
+    instance.get<CleaningOccupancy[]>(`/benches/${benchId}/cleaning`)
+}
+
+// 就座/离开：清扫占台中的台落座会被后端拒绝
+export const sittingApi = {
+  sit: (benchId: number, data: { passengerName?: string; passengerKey: string }) =>
+    instance.post<BenchSitting>(`/benches/${benchId}/sit`, data),
+  leave: (sittingId: number) =>
+    instance.delete(`/benches/sittings/${sittingId}`),
+  getAll: () =>
+    instance.get<BenchSitting[]>('/benches/sittings')
 }

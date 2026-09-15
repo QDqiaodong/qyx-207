@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import RailwayLineManage from './components/RailwayLineManage.vue'
 import StationManage from './components/StationManage.vue'
 import RestBenchManage from './components/RestBenchManage.vue'
+import CleaningManage from './components/CleaningManage.vue'
 import ChangeRecords from './components/ChangeRecords.vue'
 
 const activeTab = ref('bench')
@@ -19,6 +20,9 @@ const activeTab = ref('bench')
       <el-tabs v-model="activeTab" type="card">
         <el-tab-pane label="休息台管理" name="bench">
           <RestBenchManage />
+        </el-tab-pane>
+        <el-tab-pane label="清扫占台" name="cleaning">
+          <CleaningManage />
         </el-tab-pane>
         <el-tab-pane label="线路管理" name="line">
           <RailwayLineManage />
