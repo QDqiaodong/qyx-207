@@ -26,6 +26,8 @@ public interface StationRepository extends JpaRepository<Station, Long> {
 
     List<Station> findByRailwayLineIdAndStatusNot(Long lineId, Integer status);
 
+    long countByRailwayLineIdAndStatusNot(Long lineId, Integer status);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Station s WHERE s.id = :id")
     Optional<Station> findByIdForUpdate(@Param("id") Long id);

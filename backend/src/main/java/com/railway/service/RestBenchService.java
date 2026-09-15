@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,6 +31,9 @@ public class RestBenchService {
     // 站点状态：1=正常运营
     private static final int STATION_STATUS_ACTIVE = 1;
 
+    // 线路状态：1=正常，0=已作废
+    private static final int LINE_STATUS_ACTIVE = 1;
+
     private final RestBenchRepository restBenchRepository;
     private final RailwayLineRepository railwayLineRepository;
     private final StationRepository stationRepository;
@@ -42,7 +46,12 @@ public class RestBenchService {
     }
 
     public List<RestBench> getBenchesByLineId(Long lineId) {
-        // 线路在用汇总口径：只统计在用，待转运台立即不计入
+        // 线路在用汇总口径：只统计在用，待转运台立即不计入；
+        // 线路已作废（或不存在）时，按线路查休息台一律为空
+        Optional<RailwayLine> line = railwayLineRepository.findById(lineId);
+        if (line.isEmpty() || line.get().getStatus() == null || line.get().getStatus() != LINE_STATUS_ACTIVE) {
+            return Collections.emptyList();
+        }
         return restBenchRepository.findByRailwayLineIdAndStatus(lineId, BENCH_STATUS_IN_USE);
     }
 

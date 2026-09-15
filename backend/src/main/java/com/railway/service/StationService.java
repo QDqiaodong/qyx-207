@@ -23,6 +23,9 @@ public class StationService {
     private static final int STATION_STATUS_ACTIVE = 1;
     private static final int STATION_STATUS_SUSPENDED = 2;
 
+    // 线路状态：1=正常，0=已作废
+    private static final int LINE_STATUS_ACTIVE = 1;
+
     // 休息台状态：1=在用，2=待转运，0=已删除
     private static final int BENCH_STATUS_IN_USE = 1;
     private static final int BENCH_STATUS_PENDING_TRANSFER = 2;
@@ -60,8 +63,7 @@ public class StationService {
         if (stationRepository.existsByStationCode(dto.getStationCode())) {
             throw new RuntimeException("站点编码已存在");
         }
-        RailwayLine line = railwayLineRepository.findById(dto.getLineId())
-                .orElseThrow(() -> new RuntimeException("线路不存在"));
+        RailwayLine line = lockActiveLine(dto.getLineId());
         Station station = new Station();
         station.setStationCode(dto.getStationCode());
         station.setStationName(dto.getStationName());
@@ -79,8 +81,7 @@ public class StationService {
             stationRepository.existsByStationCode(dto.getStationCode())) {
             throw new RuntimeException("站点编码已存在");
         }
-        RailwayLine line = railwayLineRepository.findById(dto.getLineId())
-                .orElseThrow(() -> new RuntimeException("线路不存在"));
+        RailwayLine line = lockActiveLine(dto.getLineId());
         // 编辑时把状态改为停运改造，与直接停运走同一套口径
         boolean toSuspend = dto.getStatus() != null
                 && dto.getStatus() == STATION_STATUS_SUSPENDED
@@ -132,5 +133,18 @@ public class StationService {
                 .orElseThrow(() -> new RuntimeException("站点不存在"));
         station.setStatus(STATION_STATUS_DELETED);
         stationRepository.save(station);
+    }
+
+    /**
+     * 站点挂接/改挂前校验目标线路：对线路行加悲观锁，与线路作废串行，
+     * 线路已作废（或不存在）时拒绝挂接，不会出现作废瞬间站点又挂上旧线。
+     */
+    private RailwayLine lockActiveLine(Long lineId) {
+        RailwayLine line = railwayLineRepository.findByIdForUpdate(lineId)
+                .orElseThrow(() -> new RuntimeException("线路不存在"));
+        if (line.getStatus() == null || line.getStatus() != LINE_STATUS_ACTIVE) {
+            throw new RuntimeException("线路已作废，不能挂载站点");
+        }
+        return line;
     }
 }

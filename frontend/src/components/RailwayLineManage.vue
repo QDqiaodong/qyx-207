@@ -60,11 +60,21 @@ const saveLine = async () => {
 
 const deleteLine = async (id: number) => {
   try {
-    await ElMessageBox.confirm('确定要删除该线路吗？', '提示', { type: 'warning' })
+    await ElMessageBox.confirm(
+      '确定要作废该线路吗？线路上还有未删除的站点时将被拒绝，需先清空站点。',
+      '作废确认',
+      { type: 'warning', confirmButtonText: '确认作废', cancelButtonText: '取消' }
+    )
+  } catch {
+    return // 用户取消
+  }
+  try {
     await lineApi.delete(id)
-    ElMessage.success('删除成功')
+    ElMessage.success('线路已作废')
     loadLines()
-  } catch {}
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || '作废失败')
+  }
 }
 
 onMounted(loadLines)
@@ -98,7 +108,7 @@ onMounted(loadLines)
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="openDialog(true, row)">编辑</el-button>
-          <el-button size="small" type="danger" @click="deleteLine(row.id)">删除</el-button>
+          <el-button size="small" type="danger" @click="deleteLine(row.id)">作废</el-button>
         </template>
       </el-table-column>
     </el-table>
