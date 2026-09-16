@@ -85,6 +85,38 @@ export interface BenchSitting {
   satAt: string
 }
 
+// 急救箱钥匙：status 1=在库，2=在外（领用未还），0=已注销
+export interface FirstAidKey {
+  id: number
+  keyCode: string
+  railwayLine: RailwayLine
+  station: Station
+  status: number
+}
+
+// 钥匙领用登记单：钥匙编号、所属站、领用人、交出时刻四要素齐全
+export interface KeyCheckout {
+  id: number
+  key: FirstAidKey
+  keyCode: string
+  stationId: number
+  stationName: string
+  lineId: number
+  lineName: string
+  borrower: string
+  borrowerRole: string
+  status: number
+  checkedOutAt: string
+  returnedAt: string | null
+}
+
+export interface KeyCheckoutPayload {
+  keyIds: number[]
+  borrower: string
+  role: 'SUPERVISOR' | 'STATION_STAFF'
+  stationId?: number
+}
+
 export interface CleaningStartPayload {
   benchIds: number[]
   reason?: string
@@ -160,4 +192,19 @@ export const sittingApi = {
     instance.delete(`/benches/sittings/${sittingId}`),
   getAll: () =>
     instance.get<BenchSitting[]>('/benches/sittings')
+}
+
+// 急救箱钥匙：领用必落登记单（编号/所属站/领用人/交出时刻），
+// 值班长可一次领空全线，站务只能领本站名下那把
+export const keyApi = {
+  getAll: () => instance.get<FirstAidKey[]>('/keys'),
+  register: (data: { keyCode: string; stationId: number }) =>
+    instance.post<FirstAidKey>('/keys', data),
+  retire: (keyId: number) => instance.delete(`/keys/${keyId}`),
+  checkout: (data: KeyCheckoutPayload) =>
+    instance.post<KeyCheckout[]>('/keys/checkout', data),
+  returnKey: (checkoutId: number) =>
+    instance.put<KeyCheckout>(`/keys/checkouts/${checkoutId}/return`),
+  getActive: () => instance.get<KeyCheckout[]>('/keys/checkouts/active'),
+  getByKey: (keyId: number) => instance.get<KeyCheckout[]>(`/keys/${keyId}/checkouts`)
 }

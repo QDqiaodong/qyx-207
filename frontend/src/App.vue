@@ -4,6 +4,7 @@ import RailwayLineManage from './components/RailwayLineManage.vue'
 import StationManage from './components/StationManage.vue'
 import RestBenchManage from './components/RestBenchManage.vue'
 import CleaningManage from './components/CleaningManage.vue'
+import FirstAidKeyManage from './components/FirstAidKeyManage.vue'
 import ChangeRecords from './components/ChangeRecords.vue'
 
 const activeTab = ref('bench')
@@ -23,6 +24,9 @@ const activeTab = ref('bench')
         </el-tab-pane>
         <el-tab-pane label="清扫占台" name="cleaning">
           <CleaningManage />
+        </el-tab-pane>
+        <el-tab-pane label="急救箱钥匙" name="key">
+          <FirstAidKeyManage />
         </el-tab-pane>
         <el-tab-pane label="线路管理" name="line">
           <RailwayLineManage />
