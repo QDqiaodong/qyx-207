@@ -1,6 +1,7 @@
 package com.railway.service;
 
 import com.railway.dto.BenchTransferDTO;
+import com.railway.dto.ChangeRecordReverseDTO;
 import com.railway.dto.RestBenchDTO;
 import com.railway.entity.ChangeRecord;
 import com.railway.entity.RailwayLine;
@@ -91,7 +92,8 @@ public class RestBenchService {
 
     @Transactional
     public RestBench updateBench(Long id, RestBenchDTO dto) {
-        RestBench bench = restBenchRepository.findById(id)
+        // 与转运/冲正共用休息台行锁：编辑改线改站与冲正串行，台账链不会被并发写岔
+        RestBench bench = restBenchRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new RuntimeException("休息台不存在"));
         if (!bench.getBenchCode().equals(dto.getBenchCode()) &&
             restBenchRepository.existsByBenchCode(dto.getBenchCode())) {
@@ -166,6 +168,91 @@ public class RestBenchService {
         redisCacheService.cacheBenchMaterial(saved);
         return saved;
     }
+
+    /**
+     * 台账冲正：台账只进不出，写错的变更记录不许改不许删，只能对它补一条反向记录把影响抵回来。
+     * 口径：
+     * 1. 原记录保留，打上"已被冲正"标记并指向冲正单；冲正单的新旧线路站点与原记录正好对调，
+     *    记在同一张台名下，一眼能看出谁冲了谁；
+     * 2. 只能冲正本台最近一条未被冲正的正式变更，中间隔着别的记录不许跳冲；
+     *    已被冲正过的记录不能再冲，冲正单本身也不能再被冲正；
+     * 3. 一张台同一时刻只允许一次冲正：先锁休息台行，再在锁内锁定读台账，并发冲正串行，
+     *    后到的看到该记录已被冲正而失败；
+     * 4. 冲正只动本台：只标记本台原记录、只往本台名下补冲正单、只把本台调回原记录变更前的
+     *    线路站点，其他台的台账与位置一概不碰；
+     * 5. 冲正单落库、原记录标记、休息台位置、材质缓存同一事务完成，任何一步失败整体回滚，
+     *    台账不留半条反向记录，休息台保持冲正前的样子。
+     */
+    @Transactional
+    public ChangeRecord reverseChangeRecord(Long recordId, ChangeRecordReverseDTO dto) {
+        // 先取这条记录属于哪张台（标量查询，记录实体不进持久化上下文；
+        // 一切判定都以持锁后的锁定读为准，这次查询的内容不做判定依据）
+        Long benchId = changeRecordRepository.findBenchIdById(recordId)
+                .orElseThrow(() -> new RuntimeException("变更记录不存在"));
+        RestBench bench = restBenchRepository.findByIdForUpdate(benchId)
+                .orElseThrow(() -> new RuntimeException("休息台不存在"));
+
+        // 持台锁后锁定读该台全部台账：与并发冲正串行，能读到对方已提交的冲正结果
+        List<ChangeRecord> records = changeRecordRepository.findByBenchIdForUpdateOrderByIdDesc(bench.getId());
+        ChangeRecord target = records.stream()
+                .filter(r -> r.getId().equals(recordId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("变更记录不存在"));
+
+        if (target.getReversalOfId() != null) {
+            throw new RuntimeException("冲正记录不能再被冲正");
+        }
+        if (target.getReversedById() != null) {
+            throw new RuntimeException("该变更记录已被冲正，不能重复冲正");
+        }
+        ChangeRecord latestEffective = records.stream()
+                .filter(r -> r.getReversalOfId() == null && r.getReversedById() == null)
+                .findFirst()
+                .orElse(null);
+        if (latestEffective == null || !latestEffective.getId().equals(recordId)) {
+            throw new RuntimeException("只能冲正该休息台最近一条未冲正的变更记录，中间隔着记录不许跳冲");
+        }
+
+        // 回到原记录变更前的线路站点；原线路/站点已不存在则整体失败回滚
+        RailwayLine backLine = railwayLineRepository.findById(target.getOldLineId())
+                .orElseThrow(() -> new RuntimeException("原线路不存在，无法冲正"));
+        Station backStation = stationRepository.findById(target.getOldStationId())
+                .orElseThrow(() -> new RuntimeException("原站点不存在，无法冲正"));
+
+        // 反向记录：新旧两端与原记录对调，记在同一台名下
+        ChangeRecord reversal = new ChangeRecord();
+        reversal.setBenchId(bench.getId());
+        reversal.setBenchCode(bench.getBenchCode());
+        reversal.setChangeType("REVERSAL");
+        reversal.setOldLineId(target.getNewLineId());
+        reversal.setOldLineName(target.getNewLineName());
+        reversal.setNewLineId(target.getOldLineId());
+        reversal.setNewLineName(target.getOldLineName());
+        reversal.setOldStationId(target.getNewStationId());
+        reversal.setOldStationName(target.getNewStationName());
+        reversal.setNewStationId(target.getOldStationId());
+        reversal.setNewStationName(target.getOldStationName());
+        reversal.setChangeReason(StringUtils.hasText(dto.getReason()) ? dto.getReason()
+                : "冲正：撤销变更记录 #" + target.getId());
+        reversal.setOperator("admin");
+        reversal.setReversalOfId(target.getId());
+        ChangeRecord saved = changeRecordRepository.save(reversal);
+
+        // 原记录留着，只打上"已被哪条冲正"的标记
+        target.setReversedById(saved.getId());
+        changeRecordRepository.save(target);
+
+        // 休息台按冲正结果回到它该在的线路站点
+        bench.setRailwayLine(backLine);
+        bench.setStation(backStation);
+        restBenchRepository.save(bench);
+
+        // 材质参数缓存按冲正后的位置刷新；缓存异常触发回滚，不留半截冲正
+        redisCacheService.removeBenchMaterial(bench.getId());
+        redisCacheService.cacheBenchMaterial(bench);
+        return saved;
+    }
+
 
     private void saveChangeRecord(RestBench bench, RailwayLine oldLine, RailwayLine newLine,
                                   Station oldStation, Station newStation, String reason) {

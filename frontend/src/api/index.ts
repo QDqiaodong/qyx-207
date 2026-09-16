@@ -53,6 +53,10 @@ export interface ChangeRecord {
   changeReason: string
   operator: string
   createdAt: string
+  // 本条是冲正单时指向被冲正的原记录；普通变更为 null
+  reversalOfId: number | null
+  // 本条已被冲正时指向冲掉它的冲正单；未被冲正为 null
+  reversedById: number | null
 }
 
 // 清扫占台单：1=清扫中（生效占台），2=已结束
@@ -125,7 +129,10 @@ export const benchApi = {
   getRecords: (benchId?: number) => {
     const params = benchId ? { benchId } : {}
     return instance.get<ChangeRecord[]>('/benches/records', { params })
-  }
+  },
+  // 冲正：对写错的变更记录补一条反向记录，原记录保留并标记已被冲正
+  reverseRecord: (recordId: number, data: { reason?: string }) =>
+    instance.post<ChangeRecord>(`/benches/records/${recordId}/reverse`, data)
 }
 
 export const cacheApi = {

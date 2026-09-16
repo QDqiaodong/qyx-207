@@ -1,6 +1,7 @@
 package com.railway.controller;
 
 import com.railway.dto.BenchTransferDTO;
+import com.railway.dto.ChangeRecordReverseDTO;
 import com.railway.dto.RestBenchDTO;
 import com.railway.entity.ChangeRecord;
 import com.railway.entity.RestBench;
@@ -95,5 +96,19 @@ public class RestBenchController {
     @GetMapping("/records")
     public ResponseEntity<List<ChangeRecord>> getChangeRecords(@RequestParam(required = false) Long benchId) {
         return ResponseEntity.ok(restBenchService.getChangeRecords(benchId));
+    }
+
+    @PostMapping("/records/{recordId}/reverse")
+    public ResponseEntity<?> reverseChangeRecord(@PathVariable Long recordId,
+                                                 @RequestBody(required = false) ChangeRecordReverseDTO dto) {
+        try {
+            ChangeRecord reversal = restBenchService.reverseChangeRecord(recordId,
+                    dto != null ? dto : new ChangeRecordReverseDTO());
+            return ResponseEntity.ok(reversal);
+        } catch (RuntimeException e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
     }
 }

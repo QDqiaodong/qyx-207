@@ -12,6 +12,7 @@ import com.railway.repository.CleaningOccupancyRepository;
 import com.railway.repository.RailwayLineRepository;
 import com.railway.repository.RestBenchRepository;
 import com.railway.repository.StationRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -52,6 +53,14 @@ class CleaningOccupancyIntegrationTest {
     private BenchSittingRepository benchSittingRepository;
     @MockBean
     private RedisCacheService redisCacheService;
+
+    @BeforeEach
+    void cleanDocs() {
+        // 各用例真实提交不回滚（并发场景需要），方法间会互相看到数据；
+        // 每例开跑前清掉占台单与就座记录，让"全局为空/只有一套"的断言只看本例
+        benchSittingRepository.deleteAll();
+        cleaningOccupancyRepository.deleteAll();
+    }
 
     private RailwayLine newLine(String code) {
         RailwayLine line = new RailwayLine();

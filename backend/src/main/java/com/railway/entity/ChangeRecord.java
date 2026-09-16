@@ -57,6 +57,14 @@ public class ChangeRecord {
     @Column(name = "operator", length = 50)
     private String operator;
 
+    // 本条是冲正单时，指向被它冲正的那条原记录；普通变更为空
+    @Column(name = "reversal_of_id")
+    private Long reversalOfId;
+
+    // 本条已被冲正时，指向冲掉它的那条冲正单；未被冲正为空
+    @Column(name = "reversed_by_id")
+    private Long reversedById;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
