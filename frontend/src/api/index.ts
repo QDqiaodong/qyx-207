@@ -117,6 +117,41 @@ export interface KeyCheckoutPayload {
   stationId?: number
 }
 
+// 急救箱药品：status 1=可用，0=已到期撤下；批次和到期日按箱落档，只成一次
+export interface FirstAidKit {
+  id: number
+  kitCode: string
+  railwayLine: RailwayLine
+  station: Station
+  batchNo: string | null
+  expiryDate: string | null
+  expiryRecordedAt: string | null
+  status: number
+}
+
+// 本站可用箱数台账：每站一行
+export interface StationKitStock {
+  id: number
+  stationId: number
+  stationName: string
+  lineId: number
+  lineName: string
+  availableCount: number
+}
+
+// 线路可用箱数台账：每线一行，应等于该线各站之和
+export interface LineKitStock {
+  id: number
+  lineId: number
+  lineName: string
+  availableCount: number
+}
+
+export interface KitStocks {
+  stations: StationKitStock[]
+  lines: LineKitStock[]
+}
+
 export interface CleaningStartPayload {
   benchIds: number[]
   reason?: string
@@ -207,4 +242,15 @@ export const keyApi = {
     instance.put<KeyCheckout>(`/keys/checkouts/${checkoutId}/return`),
   getActive: () => instance.get<KeyCheckout[]>('/keys/checkouts/active'),
   getByKey: (keyId: number) => instance.get<KeyCheckout[]>(`/keys/${keyId}/checkouts`)
+}
+
+// 急救箱药品：按箱记批次和到期日，每箱只成一次；到期日到了，
+// 本站与线路两处可用箱数同一事务各减一，没到期的不从可用里拿掉
+export const kitApi = {
+  getAll: () => instance.get<FirstAidKit[]>('/kits'),
+  register: (data: { kitCode: string; stationId: number; batchNo?: string; expiryDate?: string }) =>
+    instance.post<FirstAidKit>('/kits', data),
+  writeExpiry: (kitId: number, data: { batchNo: string; expiryDate: string }) =>
+    instance.put<FirstAidKit>(`/kits/${kitId}/expiry`, data),
+  getStocks: () => instance.get<KitStocks>('/kits/stocks')
 }
